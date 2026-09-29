@@ -1,0 +1,108 @@
+- name: Install Cilium CNI
+  hosts: k8s-01
+  become: true
+
+  vars_files:
+    - ../group_vars/k8s.yml
+
+  tasks:
+
+    - name: Install Helm prerequisites
+      ansible.builtin.apt:
+        name:
+          - curl
+        state: present
+        update_cache: true
+
+    - name: Check Helm
+      ansible.builtin.command:
+        cmd: helm version --short
+      register: helm_version
+      changed_when: false
+      failed_when: false
+
+    - name: Install Helm
+      ansible.builtin.shell:
+        cmd: |
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      when: helm_version.rc != 0
+
+    - name: Add Cilium Helm repository
+      ansible.builtin.command:
+        cmd: helm repo add cilium https://helm.cilium.io/
+      changed_when: false
+
+    - name: Update Helm repositories
+      ansible.builtin.command:
+        cmd: helm repo update
+      changed_when: false
+
+    - name: Install Cilium
+      ansible.builtin.command:
+        cmd: >
+          helm upgrade --install cilium cilium/cilium
+          --version {{ cilium_version }}
+          --namespace kube-system
+          --set ipam.mode=cluster-pool
+          --set ipam.operator.clusterPoolIPv4PodCIDRList={{ pod_cidr }}
+          --set kubeProxyReplacement=false
+          --wait
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Wait for Cilium rollout
+      ansible.builtin.command:
+        cmd: kubectl rollout status daemonset/cilium -n kube-system --timeout=5m
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      changed_when: false
+
+    - name: Wait for Cilium operator rollout
+      ansible.builtin.command:
+        cmd: kubectl rollout status deployment/cilium-operator -n kube-system --timeout=5m
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      changed_when: false
+
+    - name: Wait for CoreDNS rollout
+      ansible.builtin.command:
+        cmd: kubectl rollout status deployment/coredns -n kube-system --timeout=5m
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      changed_when: false
+
+    - name: Show Cilium pods
+      ansible.builtin.command:
+        cmd: kubectl get pods -n kube-system -l k8s-app=cilium -o wide
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: cilium_pods
+      changed_when: false
+
+    - name: Show CoreDNS pods
+      ansible.builtin.command:
+        cmd: kubectl get pods -n kube-system -l k8s-app=kube-dns -o wide
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: coredns_pods
+      changed_when: false
+
+    - name: Show cluster nodes
+      ansible.builtin.command:
+        cmd: kubectl get nodes -o wide
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: nodes
+      changed_when: false
+
+    - name: Display Cilium pods
+      ansible.builtin.debug:
+        var: cilium_pods.stdout_lines
+
+    - name: Display CoreDNS pods
+      ansible.builtin.debug:
+        var: coredns_pods.stdout_lines
+
+    - name: Display cluster nodes
+      ansible.builtin.debug:
+        var: nodes.stdout_lines

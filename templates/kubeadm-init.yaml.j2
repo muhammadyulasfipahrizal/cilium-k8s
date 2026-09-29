@@ -1,0 +1,34 @@
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+
+localAPIEndpoint:
+  advertiseAddress: "{{ hostvars['k8s-01']['ansible_host'] }}"
+  bindPort: 6443
+
+nodeRegistration:
+  criSocket: "{{ containerd_cri_socket }}"
+  kubeletExtraArgs:
+    - name: node-ip
+      value: "{{ hostvars['k8s-01']['ansible_host'] }}"
+
+---
+
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+
+clusterName: kubernetes
+
+kubernetesVersion: "{{ kubernates_version }}"
+
+controlPlaneEndpoint: "{{ control_plane_endpoint }}"
+
+networking:
+  podSubnet: "{{ pod_cidr }}"
+  serviceSubnet: "{{ service_cidr }}"
+
+apiServer:
+  certSANs:
+    - "{{ control_plane_endpoint.split(':')[0] }}"
+    - "192.168.122.1"
+    - "192.168.122.2"
+    - "192.168.122.3"

@@ -1,0 +1,27 @@
+kubernetes_minor_version: 
+
+kubernates_version:
+
+kubernetes_apt_keyring: 
+
+containerd_cri_socket: 
+
+pod_cidr: 
+
+service_cidr: 
+
+kubernetes_api_port: 
+
+control_plane_endpoint: 
+
+cilium_version: 
+
+control_plane_nodes:
+  - name:
+    ip: 
+
+  - name:
+    ip: 
+
+  - name:
+    ip: 

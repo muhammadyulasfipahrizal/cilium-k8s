@@ -1,0 +1,37 @@
+- name: Configure Kubernetes nodes
+  hosts: k8s
+  become: true
+
+  vars_files:
+    - ../group_vars/k8s.yml
+
+  tasks:
+
+    - name: Ensure IPv4 forwarding
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_forward
+        value: "1"
+        state: present
+        reload: true
+
+    - name: Ensure containerd is running
+      ansible.builtin.systemd:
+        name: containerd
+        state: started
+        enabled: true
+
+    - name: Ensure kubelet is enabled
+      ansible.builtin.systemd:
+        name: kubelet
+        enabled: true
+
+    - name: Verify containerd socket
+      ansible.builtin.stat:
+        path: /run/containerd/containerd.sock
+      register: containerd_socket
+
+    - name: Verify containerd socket exists
+      ansible.builtin.assert:
+        that:
+          - containerd_socket.stat.exists
+        fail_msg: "containerd CRI socket does not exist"

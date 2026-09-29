@@ -1,0 +1,77 @@
+- name: Generate control plane join information
+  hosts: k8s-01
+  become: true
+
+  tasks:
+    - name: Generate worker join command
+      ansible.builtin.command:
+        cmd: kubeadm token create --print-join-command
+      register: worker_join
+      changed_when: false
+
+    - name: Upload control plane certificates
+      ansible.builtin.command:
+        cmd: kubeadm init phase upload-certs --upload-certs
+      register: certificate_upload
+      changed_when: false
+
+    - name: Extract certificate key
+      ansible.builtin.set_fact:
+        control_plane_certificate_key: "{{ certificate_upload.stdout_lines[-1] }}"
+
+    - name: Store worker join command
+      ansible.builtin.set_fact:
+        worker_join_command: "{{ worker_join.stdout }}"
+
+
+- name: Join additional control plane nodes
+  hosts: "k8s_control_plane:!k8s-01"
+  become: true
+
+  tasks:
+    - name: Check whether node is already joined
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: kubelet_config
+
+    - name: Join control plane
+      ansible.builtin.command:
+        cmd: >
+          {{ hostvars['k8s-01']['worker_join_command'] }}
+          --control-plane
+          --certificate-key {{ hostvars['k8s-01']['control_plane_certificate_key'] }}
+      when: not kubelet_config.stat.exists
+
+    - name: Create kubeconfig directory
+      ansible.builtin.file:
+        path: /home/ubuntu/.kube
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: "0700"
+
+    - name: Copy admin kubeconfig
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/ubuntu/.kube/config
+        remote_src: true
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+
+    - name: Create root kubeconfig directory
+      ansible.builtin.file:
+        path: /root/.kube
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Copy admin kubeconfig for root
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0600"

@@ -1,0 +1,83 @@
+- name: Initialize Kubernetes control plane
+  hosts: k8s-01
+  become: true
+
+  vars_files:
+    - ../group_vars/k8s.yml
+
+  tasks:
+
+    - name: Check whether Kubernetes is already initialized
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: kubeadm_initialized
+
+    - name: Create kubeadm configuration
+      ansible.builtin.template:
+        src: ../templates/kubeadm-init.yaml.j2
+        dest: /root/kubeadm-init.yaml
+        mode: "0600"
+      when: not kubeadm_initialized.stat.exists
+
+    - name: Initialize Kubernetes
+      ansible.builtin.command:
+        cmd: kubeadm init --config /root/kubeadm-init.yaml --upload-certs
+      when: not kubeadm_initialized.stat.exists
+
+    - name: Create .kube directory
+      ansible.builtin.file:
+        path: /home/ubuntu/.kube
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: "0700"
+
+    - name: Copy admin kubeconfig
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/ubuntu/.kube/config
+        remote_src: true
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+
+    - name: Create root kubeconfig directory
+      ansible.builtin.file:
+        path: /root/.kube
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Copy admin kubeconfig for root
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Generate worker join command
+      ansible.builtin.command:
+        cmd: kubeadm token create --print-join-command
+      register: worker_join
+      changed_when: false
+
+    - name: Generate control plane certificate key
+      ansible.builtin.command:
+        cmd: kubeadm init phase upload-certs --upload-certs
+      register: certificate_upload
+      changed_when: false
+
+    - name: Extract certificate key
+      ansible.builtin.set_fact:
+        control_plane_certificate_key: "{{ certificate_upload.stdout_lines[-1] }}"
+
+    - name: Store worker join command
+      ansible.builtin.set_fact:
+        worker_join_command: "{{ worker_join.stdout }}"
+
+    - name: Store control plane certificate key globally
+      ansible.builtin.set_fact:
+        control_plane_certificate_key: "{{ control_plane_certificate_key }}"
